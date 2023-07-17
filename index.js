@@ -43,6 +43,43 @@ app.use(express.json());
 
 app.use(express.urlencoded({extended : true}));
 
+app.get('/api/set-data2', async (req, res) => {
+    const lockKey = 'locks:lock-key';
+    const title = req.query.title;
+    const message = req.query.message;
+
+    console.log('Count:', count);
+    count = count + 1;
+    let lock = null;
+    try {
+        lock = await redlock.lock(lockKey, 10000);
+        let value = await redisClient.get(title);
+        if (value == null) {
+            const query = `
+            INSERT INTO messagetable (title, message)
+            VALUES (?, ?)
+            ON DUPLICATE KEY UPDATE message = ?;
+          `;
+            const values = [ title, message, message ];
+            await executeQuery(query, values);
+
+            console.log('Start mock fetch....');
+            await fetchApiData();
+
+            await redisClient.set(title, message, "EX", 1);
+
+            value = message
+        } else {
+            console.log("Value is found from cache..");
+        }
+        res.status(200).send(value);
+    
+        lock.unlock()
+    } catch (error) {
+        res.status(500).send('Internal server error' + error.message);
+    }
+});
+
 app.get('/api/set-data', async (req, res) => {
     const lockKey = 'locks:lock-key';
     const title = req.query.title;
